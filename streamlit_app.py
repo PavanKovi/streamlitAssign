@@ -1,81 +1,96 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
+import io
+import requests
+import altair as alt
 
-st.title("Data App Assignment, on June 20th")
+# Load the data
+@st.cache
+def load_data():
+    url = 'https://drive.google.com/uc?export=download&id=1ePNeKEvPc_l6SWBcvH-MK0Y8eyu3GapR'
+    response = requests.get(url)
+    data = pd.read_csv(io.StringIO(response.content.decode('utf-8')))
+    return data
 
-st.write("### Input Data and Examples")
-df = pd.read_csv("Superstore_Sales_utf8.csv", parse_dates=True)
-st.dataframe(df)
+data = load_data()
 
-# Bar chart of sales by category
-st.bar_chart(df, x="Category", y="Sales")
+# Title
+st.title("Olympic Athletes Data Analysis")
 
-# Aggregated bar chart of sales by category
-aggregated_df = df.groupby("Category", as_index=False).sum()
-st.dataframe(aggregated_df)
-st.bar_chart(aggregated_df, x="Category", y="Sales", color="#04f")
+# Display the raw data
+if st.checkbox("Show raw data"):
+    st.write(data)
 
-# Aggregated sales by month
-df["Order_Date"] = pd.to_datetime(df["Order_Date"])
-df.set_index('Order_Date', inplace=True)
-sales_by_month = df.filter(items=['Sales']).groupby(pd.Grouper(freq='M')).sum()
+# Sidebar for user input
+st.sidebar.header("Filter options")
 
-st.dataframe(sales_by_month)
-st.line_chart(sales_by_month, y="Sales")
+# Filter by Year
+years = data['Year'].unique()
+selected_year = st.sidebar.multiselect("Select Year(s)", years, default=years)
 
-st.write("## Your additions")
+# Filter by Sport
+sports = data['Sport'].unique()
+selected_sport = st.sidebar.multiselect("Select Sport(s)", sports, default=sports)
 
-# Categorized data
-data = {
-    'Category': ['Technology', 'Furniture', 'Office Supplies'],
-    'Sub_Category': {
-        'Technology': ['Phones', 'Appliances', 'Machines', 'Copiers'],
-        'Furniture': ['Bookcases', 'Chairs', 'Tables', 'Storage', 'Furnishings'],
-        'Office Supplies': [
-            'Labels', 'Art', 'Binders', 'Paper', 'Accessories', 'Envelopes',
-            'Fasteners', 'Supplies'
-        ]
-    }
-}
+# Filter by Sex
+sex = data['Sex'].unique()
+selected_sex = st.sidebar.multiselect("Select Sex", sex, default=sex)
 
-# Step (1): Add a dropdown for Category
-category = st.selectbox("Select a Category", data['Category'])
+# Filter the data based on user input
+filtered_data = data[(data['Year'].isin(selected_year)) & 
+                     (data['Sport'].isin(selected_sport)) &
+                     (data['Sex'].isin(selected_sex))]
 
-# Step (2): Add a multi-select for Sub_Category in the selected Category
-if category:
-    sub_categories = data['Sub_Category'][category]
-    selected_sub_categories = st.multiselect(f"Select Sub-Categories in {category}", sub_categories)
+st.write(f"Filtered Data: {len(filtered_data)} rows")
+st.write(filtered_data)
 
-# Display selected options
-st.write(f"Selected Category: {category}")
-st.write(f"Selected Sub-Categories: {selected_sub_categories}")
+# Plotting
+st.header("Medal Distribution")
 
-# Filter the dataframe based on selected category and sub-categories
-if selected_sub_categories:
-    filtered_df = df[(df['Category'] == category) & (df['Sub_Category'].isin(selected_sub_categories))]
+# Medal count per team
+medal_count = filtered_data.groupby(['Team', 'Medal']).size().unstack(fill_value=0)
+st.bar_chart(medal_count)
 
-    # Step (3): Show a line chart of sales for the selected items in (2)
-    st.write("### Sales Line Chart")
-    sales_chart = filtered_df.groupby('Order_Date')['Sales'].sum().reset_index()
-    st.line_chart(sales_chart, x='Order_Date', y='Sales')
+# Medal count per sport
+medal_count_sport = filtered_data.groupby(['Sport', 'Medal']).size().unstack(fill_value=0)
+st.bar_chart(medal_count_sport)
 
-    # Calculate metrics
-    total_sales = filtered_df['Sales'].sum()
-    total_profit = filtered_df['Profit'].sum()
-    overall_profit_margin = total_profit / total_sales * 100
+# Medal count per year
+medal_count_year = filtered_data.groupby(['Year', 'Medal']).size().unstack(fill_value=0)
+st.line_chart(medal_count_year)
 
-    # Overall average profit margin for all products across all categories
-    overall_avg_profit_margin = df['Profit'].sum() / df['Sales'].sum() * 100
-    delta_profit_margin = overall_profit_margin - overall_avg_profit_margin
+# Additional analysis
+st.header("Additional Analysis")
 
-    # Step (4): Show three metrics
-    st.write("### Metrics")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total Sales", f"${total_sales:,.2f}")
-    col2.metric("Total Profit", f"${total_profit:,.2f}")
-    col3.metric("Overall Profit Margin", f"{overall_profit_margin:.2f}%", delta=f"{delta_profit_margin:.2f}%")
+# Age distribution
+st.subheader("Age Distribution")
+age_hist = alt.Chart(filtered_data.dropna(subset=['Age'])).mark_bar().encode(
+    alt.X("Age:Q", bin=True),
+    y='count()',
+).properties(
+    width=600,
+    height=400
+)
+st.altair_chart(age_hist)
 
-# Display selected options
-st.write(f"Selected Category: {category}")
-st.write(f"Selected Sub-Categories: {selected_sub_categories}")
+# Height distribution
+st.subheader("Height Distribution")
+height_hist = alt.Chart(filtered_data.dropna(subset=['Height'])).mark_bar().encode(
+    alt.X("Height:Q", bin=True),
+    y='count()',
+).properties(
+    width=600,
+    height=400
+)
+st.altair_chart(height_hist)
+
+# Weight distribution
+st.subheader("Weight Distribution")
+weight_hist = alt.Chart(filtered_data.dropna(subset=['Weight'])).mark_bar().encode(
+    alt.X("Weight:Q", bin=True),
+    y='count()',
+).properties(
+    width=600,
+    height=400
+)
+st.altair_chart(weight_hist)
